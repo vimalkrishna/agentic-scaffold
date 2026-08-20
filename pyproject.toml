@@ -1,0 +1,17 @@
+[project]
+name = "agentic-scaffold"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "aws-cdk-lib>=2.265.0",
+    "constructs>=10.8.1",
+]
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "cdk-nag>=3.0.2",
+    "flake8>=7.3.0",
+    "pytest>=9.1.1",
+]

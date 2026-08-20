@@ -1,0 +1,3 @@
+[flake8]
+exclude = .venv,.git,__pycache__,cdk.out,*.egg-info, tests
+max-line-length = 79

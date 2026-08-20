@@ -1,5 +1,6 @@
 import aws_cdk as cdk
-from cdk_nag import AwsSolutionsChecks, Validations
+from aws_cdk import Validations          # Validations lives in aws_cdk core, not cdk_nag
+from cdk_nag import AwsSolutionsChecks   # AwsSolutionsChecks is the actual cdk_nag package
 
 from stacks.react_loop_stack import ReactLoopStack
 

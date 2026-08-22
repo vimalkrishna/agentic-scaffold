@@ -1,5 +1,6 @@
 from aws_cdk import Stack
 from constructs import Construct
+from aws_cdk import CfnOutput
 
 from app_constructs.react_loop.calculator_tool import CalculatorTool
 # Adding statemachine import ReactLoop, wire up the ReAct loop state machine
@@ -20,4 +21,10 @@ class ReactLoopStack(Stack):
             "ReactLoop",
             calculator_fn=self.calculator_tool.function,
             foundation_model_arn=foundation_model_arn(self, DEFAULT_MODEL_ID),
+        )
+
+        CfnOutput(
+            self,
+            "StateMachineArn",
+            value=self.react_loop.state_machine.state_machine_arn,
         )

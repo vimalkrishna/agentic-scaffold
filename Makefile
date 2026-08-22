@@ -18,10 +18,12 @@ test:
 
 # AWS CDK template synthesis
 synth:
-	uv run cdk synth --all
+	uv run cdk synth
+# uv run cdk synth --all
 
 # Combined target for local pre-commit testing
 ci: lint test synth
+# ci: test synth
 
 # Complete setup and execution target
 all: install-cdk sync lint test synth

@@ -34,14 +34,27 @@ def test_no_wildcard_iam_resources():
             )
 
 
-# def test_state_machine_created():
-#     template = _synth_template()
-#     template.resource_count_is("AWS::StepFunctions::StateMachine", 1)
+def test_state_machine_created():
+    template = _synth_template()
+    template.resource_count_is("AWS::StepFunctions::StateMachine", 1)
 
 
-# def test_state_machine_uses_jsonata():
-#     template = _synth_template()
-#     template.has_resource_properties(
-#         "AWS::StepFunctions::StateMachine",
-#         {"QueryLanguage": "JSONATA"},
-#     )
+def test_state_machine_uses_jsonata():
+    template = _synth_template()
+    resources = template.to_json()["Resources"]
+    state_machines = [
+        r
+        for r in resources.values()
+        if r["Type"] == "AWS::StepFunctions::StateMachine"
+    ]
+    assert len(state_machines) == 1
+
+    definition_string = state_machines[0]["Properties"]["DefinitionString"]
+    # DefinitionString is an Fn::Join of literal text + dynamic references
+    # (e.g. the Lambda's ARN). Concatenate just the literal string parts to
+    # search the underlying ASL JSON as plain text.
+    parts = definition_string["Fn::Join"][1]
+    literal_text = "".join(p for p in parts if isinstance(p, str))
+
+    assert '"QueryLanguage":"JSONata"' in literal_text.replace(" ", "")
+

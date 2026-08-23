@@ -22,12 +22,12 @@ class ReactLoopStack(Stack):
             calculator_fn=self.calculator_tool.function,
             foundation_model_arn=foundation_model_arn(self, DEFAULT_MODEL_ID),
         )
-# calculator_fn: Points directly to the Lambda function generated 
+# calculator_fn: Points directly to the Lambda function generated
 # by CalculatorTool.
-# foundation_model_arn: Resolves the ARN for the Amazon Bedrock 
-# model (amazon.nova-lite-v1:0), granting necessary IAM permissions 
+# foundation_model_arn: Resolves the ARN for the Amazon Bedrock
+# model (amazon.nova-lite-v1:0), granting necessary IAM permissions
 # for model invocation.
-# CfnOutput: Creates an explicit CloudFormation Output (StateMachineArn). 
+# CfnOutput: Creates an explicit CloudFormation Output (StateMachineArn).
 # Upon deployment via cdk deploy, it displays the ARN of the deployed Step
 #  Functions state machine in the terminal.
         CfnOutput(

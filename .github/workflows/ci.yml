@@ -6,7 +6,13 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:   # adds the manual "Run workflow" button in the Actions tab
-  
+
+# To cancels an in-flight run automatically if pushed again before it finishes.
+# This is useful to avoid wasting VM resources (however small) on frequent pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest

@@ -16,6 +16,14 @@ lint:
 test:
 	uv run pytest
 
+# AWS CDK template synthesis and deployment
+deploy:
+	uv run cdk deploy
+
+# AWS CDK stack destruction
+destroy:
+	uv run cdk destroy
+
 # AWS CDK template synthesis
 synth:
 	uv run cdk synth

@@ -1,6 +1,7 @@
 import json
 
 from aws_cdk import Duration
+from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import aws_stepfunctions_tasks as tasks
@@ -131,4 +132,21 @@ class ReactLoop(Construct):
             definition_body=sfn.DefinitionBody.from_chainable(definition),
             query_language=sfn.QueryLanguage.JSONATA,
             timeout=Duration.minutes(5),
+        )
+        # Nova Lite is distributed via AWS Marketplace. On first invocation
+        # in this account, Bedrock auto-initiates a subscription, but only
+        # if the calling role has these permissions. AWS Marketplace's
+        # Subscribe/Unsubscribe/ViewSubscriptions actions don't support
+        # resource-level scoping (account-level operations), so "*" here is
+        # the only valid value, not a shortcut. See ADR-0005.
+        self.state_machine.role.add_to_policy(
+            iam.PolicyStatement(
+                sid="BedrockMarketplaceAutoEnablement",
+                actions=[
+                    "aws-marketplace:Subscribe",
+                    "aws-marketplace:Unsubscribe",
+                    "aws-marketplace:ViewSubscriptions",
+                ],
+                resources=["*"],
+            )
         )

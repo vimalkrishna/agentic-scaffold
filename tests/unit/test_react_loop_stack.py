@@ -23,11 +23,21 @@ def test_calculator_lambda_created():
 def test_no_wildcard_iam_resources():
     template = _synth_template()
     resources = template.to_json().get("Resources", {})
+
+    # AWS Marketplace's Subscribe/Unsubscribe/ViewSubscriptions actions are
+    # account-level operations that don't support resource-level ARN
+    # scoping "*" is the only valid value AWS permits here, not a
+    # shortcut. See ADR-0005. Every other Sid is still held to the 
+    # no-wildcard standard.
+    allowed_wildcard_sids = {"BedrockMarketplaceAutoEnablement"}
+
     for resource in resources.values():
         if resource.get("Type") != "AWS::IAM::Policy":
             continue
         statements = resource["Properties"]["PolicyDocument"]["Statement"]
         for statement in statements:
+            if statement.get("Sid") in allowed_wildcard_sids:
+                continue
             assert statement.get("Resource") != "*", (
                 "Found a wildcard IAM Resource — every permission should "
                 "be scoped to a specific ARN, not '*'."

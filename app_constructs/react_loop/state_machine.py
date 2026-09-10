@@ -75,6 +75,7 @@ class ReactLoop(Construct):
             "Reason (Bedrock Converse)",
             service="bedrockruntime",
             action="converse",
+            iam_action="bedrock:InvokeModel",
             parameters={
                 "ModelId": foundation_model_arn,
                 "Messages": "{% $states.input.messages %}",

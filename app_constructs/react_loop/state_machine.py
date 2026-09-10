@@ -1,11 +1,11 @@
-import json
-
 from aws_cdk import Duration
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import aws_stepfunctions_tasks as tasks
 from constructs import Construct
+
+# from app_constructs.react_loop.iam import inference_profile_arn
 
 MAX_ITERATIONS = 5
 
@@ -17,7 +17,7 @@ _CALCULATOR_TOOL_SPEC = {
             # Serialized to a string here, at synth time, a documented
             # cdk-nag/Bedrock-integration issue reports SCHEMA_VALIDATION_FAILED
             # when this is passed as a nested object instead.
-            "Json": json.dumps(
+            "Json": (
                 {
                     "type": "object",
                     "properties": {
@@ -51,7 +51,8 @@ class ReactLoop(Construct):
         construct_id: str,
         *,
         calculator_fn: _lambda.IFunction,
-        foundation_model_arn: str,
+        model_id_for_invocation: str,
+        iam_resources_for_invocation: list[str],
     ) -> None:
         super().__init__(scope, construct_id)
 
@@ -77,19 +78,23 @@ class ReactLoop(Construct):
             action="converse",
             iam_action="bedrock:InvokeModel",
             parameters={
-                "ModelId": foundation_model_arn,
+                "ModelId": model_id_for_invocation,
                 "Messages": "{% $states.input.messages %}",
                 "ToolConfig": {"Tools": [_CALCULATOR_TOOL_SPEC]},
             },
-            iam_resources=[foundation_model_arn],
+            iam_resources=iam_resources_for_invocation,
             outputs={
                 "iteration": "{% $states.input.iteration + 1 %}",
                 "max_iterations": "{% $states.input.max_iterations %}",
                 "messages": "{% $append($states.input.messages, [$states.result.Output.Message]) %}",
                 "stop_reason": "{% $states.result.StopReason %}",
-                "tool_use": "{% $states.result.Output.Message.Content[ToolUse][0].ToolUse %}",
+                "tool_use": (
+                    "{% $exists($states.result.Output.Message.Content[ToolUse][0].ToolUse) "
+                    "? $states.result.Output.Message.Content[ToolUse][0].ToolUse : null %}"
+                ),
             },
         )
+        #
 
         act = tasks.LambdaInvoke.jsonata(
             self,

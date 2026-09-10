@@ -4,10 +4,15 @@ from aws_cdk import CfnOutput
 
 from app_constructs.react_loop.calculator_tool import CalculatorTool
 # Adding statemachine import ReactLoop, wire up the ReAct loop state machine
-from app_constructs.react_loop.iam import foundation_model_arn
+from app_constructs.react_loop.iam import inference_profile_arn
+from app_constructs.react_loop.iam import eu_foundation_model_arns
 from app_constructs.react_loop.state_machine import ReactLoop
 
-DEFAULT_MODEL_ID = "amazon.nova-lite-v1:0"
+# DEFAULT_MODEL_ID = "amazon.nova-lite-v1:0"
+# eu-central-1 requires the cross-Region inference profile for Nova Lite —
+# direct on-demand invocation by base model ID isn't supported there.
+INFERENCE_PROFILE_ID = "eu.amazon.nova-lite-v1:0"
+BASE_MODEL_ID = "amazon.nova-lite-v1:0"
 
 
 class ReactLoopStack(Stack):
@@ -20,7 +25,11 @@ class ReactLoopStack(Stack):
             self,
             "ReactLoop",
             calculator_fn=self.calculator_tool.function,
-            foundation_model_arn=foundation_model_arn(self, DEFAULT_MODEL_ID),
+            model_id_for_invocation=inference_profile_arn(self, INFERENCE_PROFILE_ID),
+            iam_resources_for_invocation=[
+                inference_profile_arn(self, INFERENCE_PROFILE_ID),
+                *eu_foundation_model_arns(self, BASE_MODEL_ID),
+            ],
         )
 # calculator_fn: Points directly to the Lambda function generated
 # by CalculatorTool.

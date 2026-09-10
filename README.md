@@ -5,7 +5,7 @@
 Step Functions, ReAct only, state machine + one trivial tool, Bedrock Converse for reasoning + IAM. No RAG, no multi-model routing, no human-in-the-loop gate. 
 
 A serverless, cloud-native **ReAct (Reason + Act)** agent loop built purely with **AWS Step Functions (JSONata)**, **Amazon Bedrock (Nova Lite)**, and **AWS CDK (Python)**. 
-No heavyweight agent frameworks (no LangChain, CrewAI, or LlamaIndex)—just direct AWS service-to-service orchestration with fine-grained IAM permissions, full execution observability, and zero server management.
+No heavyweight agent frameworks (no LangChain, CrewAI, or LlamaIndex) direct AWS service-to-service orchestration with fine-grained IAM permissions, full execution observability, and zero server management.
 
 ---
 ## Architecture & ReAct Flow
@@ -111,9 +111,14 @@ The script polls the Step Functions execution and prints the output:
 }
 ```
 ---
-## Architecture Decision Records (ADRs)
-Key architectural choices are documented under [`adr/`](adr/):
-- [ADR-0001](adr/0001-step-functions-react-as-bare-baseline.md): Step Functions ReAct as bare baseline.
-- [ADR-0002](adr/0002-uv-owned-venv-and-cdk-json-app-entrypoint.md): `uv`-owned venv and `cdk.json` app entrypoint.
-- [ADR-0003](adr/0003-pin-python-3-13-runtime.md): Pin Python 3.13 runtime across CDK and Lambda.
-- [ADR-0004](adr/0004-cdk-nag-removed.md): Removal of `cdk-nag` in favor of focused CDK assertions.
+## Architecture Decision Records
+
+| ADR | Decision | Domain |
+|---|---|---|
+| [0001](adr/0001-step-functions-react-as-bare-baseline.md) | Step Functions ReAct as bare baseline | 2 |
+| [0002](adr/0002-uv-owned-venv-and-cdk-json-app-entrypoint.md) | uv-owned .venv, cdk.json entrypoint | — |
+| [0003](adr/0003-pin-python-3-13-runtime.md) | Pin Lambda to Python 3.13 | — |
+| [0004](adr/0004-cdk-nag-removed.md) | cdk-nag removed (tool incompatibility) | 3 |
+| [0005](adr/0005-marketplace-iam-wildcard-exception.md) | Marketplace IAM wildcard exception | 3 |
+| [0006](adr/0006-bedrock-invoke-permissions-and-inference-profile.md) | Bedrock InvokeModel action + EU inference profile | 2 |
+| [0007](adr/0007-tool-spec-input-schema-must-be-a-json-object.md) | ToolSpec InputSchema.Json must be an object, not a string | 2 |

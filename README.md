@@ -21,6 +21,10 @@ flowchart TD
     Choice -- No (stop_reason != 'tool_use' or max iterations) --> Finalize[4. Finalize Answer]
     Finalize --> Done([Output: Final Response])
 ```
+---
+![Step Function Graph](docs/images/stepfunctions_graph.png)
+---
+
 ### Execution Steps
 1. **Initialize (`Pass`)**: Formats the incoming user prompt into Bedrock's `Messages` schema and initializes iteration counters.
 2. **Reason (`CallAwsService -> bedrockruntime:converse`)**: Calls Bedrock Converse API with model `amazon.nova-lite-v1:0` and available tool definitions.
@@ -103,6 +107,7 @@ Run an end-to-end reasoning query against the deployed state machine using the b
 uv run python scripts/invoke_state_machine.py \
     --state-machine-arn <YOUR_STATE_MACHINE_ARN> \
     "What is 12 * (3 + 4)?"
+    uv run python scripts/invoke_state_machine.py --state-machine-arn arn:aws:states:eu-central-1:YXXXX:stateMachine:ReactLoopStateMachine78DF3D3E-XXXXXX  "what is 12 times (3 plus 4)"
 ```
 The script polls the Step Functions execution and prints the output:
 ```json
@@ -122,3 +127,5 @@ The script polls the Step Functions execution and prints the output:
 | [0005](adr/0005-marketplace-iam-wildcard-exception.md) | Marketplace IAM wildcard exception | 3 |
 | [0006](adr/0006-bedrock-invoke-permissions-and-inference-profile.md) | Bedrock InvokeModel action + EU inference profile | 2 |
 | [0007](adr/0007-tool-spec-input-schema-must-be-a-json-object.md) | ToolSpec InputSchema.Json must be an object, not a string | 2 |
+| [0008](adr/0008-jsonata-undefined-field-guard.md) | JSONata expression correctness `ToolUse` block produces `null` instead of failing the state | 2 |
+

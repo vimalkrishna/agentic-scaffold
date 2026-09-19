@@ -30,6 +30,11 @@ def start_execution(client, state_machine_arn: str, query: str) -> str:
         stateMachineArn=state_machine_arn,
         input=json.dumps({"query": query}),
     )
+    # getting the Execution ARN from the response. CDK deploy gives
+    # the state machine ARN (a CfnOutput, static, same every deploy)
+    # The execution ARN is generated per-run, returned by start_execution.
+    # So it comes from invoke_state_machine.py, not from cdk deploy
+    print(f"Execution ARN: {response['executionArn']}")
     return response["executionArn"]
 
 

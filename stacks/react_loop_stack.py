@@ -3,6 +3,8 @@ from constructs import Construct
 from aws_cdk import CfnOutput
 
 from app_constructs.react_loop.calculator_tool import CalculatorTool
+# Added IMPORT
+from app_constructs.react_loop.guardrail import ReasonGuardrail
 # Adding statemachine import ReactLoop, wire up the ReAct loop state machine
 from app_constructs.react_loop.iam import inference_profile_arn
 from app_constructs.react_loop.iam import eu_foundation_model_arns
@@ -21,6 +23,11 @@ class ReactLoopStack(Stack):
 
         self.calculator_tool = CalculatorTool(self, "CalculatorTool")
 
+        # Added: the guardrail before ReactLoop needs its ARN
+        self.reason_guardrail = ReasonGuardrail(self, "ReasonGuardrail")
+
+        # Initially, this was calling State_machine with just three parameters
+        # calculator_fn, model_id_for_invocation, iam_resources_for_invocation)
         self.react_loop = ReactLoop(
             self,
             "ReactLoop",
@@ -30,6 +37,8 @@ class ReactLoopStack(Stack):
                 inference_profile_arn(self, INFERENCE_PROFILE_ID),
                 *eu_foundation_model_arns(self, BASE_MODEL_ID),
             ],
+            guardrail_arn=self.reason_guardrail.guardrail_arn,
+            # guardrail_version left at its "DRAFT" default, not passed
         )
 # calculator_fn: Points directly to the Lambda function generated
 # by CalculatorTool.

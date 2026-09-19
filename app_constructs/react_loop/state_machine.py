@@ -53,6 +53,8 @@ class ReactLoop(Construct):
         calculator_fn: _lambda.IFunction,
         model_id_for_invocation: str,
         iam_resources_for_invocation: list[str],
+        guardrail_arn: str,
+        guardrail_version: str = "DRAFT",
     ) -> None:
         super().__init__(scope, construct_id)
 
@@ -81,6 +83,18 @@ class ReactLoop(Construct):
                 "ModelId": model_id_for_invocation,
                 "Messages": "{% $states.input.messages %}",
                 "ToolConfig": {"Tools": [_CALCULATOR_TOOL_SPEC]},
+                # --- NEW: ADR-0009 Guardrail Config ---
+                # ADR-0009: Basic-tier guardrail, single region, no
+                # crossRegionConfig. GuardrailIdentifier accepts either
+                # a bare ID or a full ARN — we pass the full ARN so the
+                # same string also serves the IAM Resource below without
+                # needing to reconstruct it by hand.
+                "GuardrailConfig": {
+                    "GuardrailIdentifier": guardrail_arn,
+                    "GuardrailVersion": guardrail_version,
+                    "Trace": "enabled",
+                },
+
             },
             iam_resources=iam_resources_for_invocation,
             outputs={
@@ -154,5 +168,18 @@ class ReactLoop(Construct):
                     "aws-marketplace:ViewSubscriptions",
                 ],
                 resources=["*"],
+            )
+        )
+
+        # --- NEW: Grant permission to apply the Guardrail ---
+        # ADR-0009: unlike the Marketplace actions above, ApplyGuardrail
+        # DOES support resource-level scoping, scoped to the single
+        # guardrail ARN, single region (eu-central-1), no wildcard.
+        self.state_machine.role.add_to_policy(
+            iam.PolicyStatement(
+                sid="AllowApplyGuardrail",
+                effect=iam.Effect.ALLOW,
+                actions=["bedrock:ApplyGuardrail"],
+                resources=[guardrail_arn],
             )
         )

@@ -1,12 +1,51 @@
+"""Amazon Bedrock Guardrails Context and Execution Hook.
+
+Configures and applies native AWS Bedrock Guardrail configurations to prevent
+prompt injections, jailbreaks, PII leakage, and out-of-bounds agent behavior.
+
+GOVERNING ARCHITECTURE DECISIONS (ADR):
+* [ADR-0009] Bedrock Guardrail on Reason — Basic tier, eu-central-1, no
+             crossRegionConfig; one DENY topic (GeneralKnowledgeQuestions) +
+             content filters (HATE/INSULTS HIGH). See rationale and rejected
+             alternatives in decisions.md.
+* [ADR-TBD]  Deterministic vs. non-deterministic execution boundary for tool
+             safety (see calculator_tool.py, the deterministic side of that
+             boundary). Not yet written as its own ADR.
+
+CRITICAL DESIGN RULES FOR MAINTAINERS:
+1. SYNCHRONOUS, INLINE EVALUATION: This file only defines a CfnGuardrail
+   resource at synth time — there is no runtime execution logic here. The
+   guardrail is evaluated synchronously, inline, as part of state_machine.py's
+   Reason (Bedrock Converse) call. A blocked request surfaces as
+   stop_reason == 'guardrail_intervened' in Reason's own output, not as a
+   separate async check or a call into this file at runtime.
+2. NO CROSS-REGION ROUTING BY DESIGN: ADR-0009 deliberately keeps this
+   guardrail Basic tier and single-region (no crossRegionConfig) — unlike the
+   Reason state's model invocation, which DOES use the EU cross-Region
+   inference profile (ADR-0006). Do not add crossRegionConfig here, and do
+   not route this guardrail's identifiers through iam.py's cross-region
+   helpers (eu_foundation_model_arns, inference_profile_arn) — those exist
+   for the model invocation only and are unrelated to this construct. Adding
+   cross-region behavior to the guardrail is a new decision, requiring a new
+   ADR, not a silent extension of ADR-0006.
+3. STRUCTURED REJECTION VIA CONFIG, NOT EXCEPTIONS: blocked_input_messaging
+   and blocked_outputs_messaging below are the structured rejection payload —
+   Bedrock returns these as part of a normal (non-exceptional) Converse
+   response when a rail trips, which is what lets state_machine.py's JSONata
+   route on stop_reason cleanly, with no Python-level exception handling
+   needed anywhere in this path.
+"""
+
 from aws_cdk import aws_bedrock as bedrock
 from constructs import Construct
 
 
 class ReasonGuardrail(Construct):
     """
-    Bedrock Guardrail (Basic Tier, eu-central-1), no crossRegionConfig.
-    Constrains Reason step to arithmetic and filters harmful content.
-    for the Reason step's Converse call.
+    Bedrock Guardrail (Basic Tier, eu-central-1, no crossRegionConfig) that
+    constrains the Reason step's Converse call to arithmetic-relevant queries
+    and filters harmful content.
+
     Enforces two independent, falsifiable policies:
       - Topic policy: denies general-knowledge questions (off-mission
         for a calculator agent).
@@ -75,6 +114,9 @@ class ReasonGuardrail(Construct):
         # It is a deliberate choice for this commit, see ADR-0009
         # for why we don't promote to a numbered version yet.
         self.guardrail_id = self.guardrail.attr_guardrail_id
-        # Expose full ARN by key word and not just ID due to *, requirement.
+        # Expose the full ARN, not just the ID: state_machine.py passes this
+        # same string as both GuardrailIdentifier (Reason's parameters) and
+        # the IAM Resource for the AllowApplyGuardrail policy statement, so
+        # one value serves both roles without reconstructing the ARN by hand.
         self.guardrail_arn = self.guardrail.attr_guardrail_arn
         self.guardrail_version = "DRAFT"

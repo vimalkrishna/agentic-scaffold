@@ -1,11 +1,48 @@
+"""Step Functions ReAct State Machine Builder.
+
+Defines the native, serverless cloud-native ReAct orchestrator loop using
+AWS Step Functions and JSONata.
+
+GOVERNING ARCHITECTURE DECISIONS (ADR):
+* [ADR-0001] Step Functions ReAct as bare baseline (No LangChain/CrewAI)
+* [ADR-0005] AWS Marketplace IAM wildcard exception (Nova Lite auto-subscription)
+* [ADR-0007] ToolSpec InputSchema.Json must be an object, not a string
+* [ADR-0008] JSONata expression correctness (Null handling vs. State failure)
+* [ADR-0009] Bedrock Guardrail on Reason (topic-policy + content filters)
+* [ADR-0010] GuardrailConfig.Trace lowercase; console-edit vs CDK-deployed drift
+* [ADR-0012] Token-usage observability (RecordTokenMetrics, CloudWatch namespace)
+
+CRITICAL DESIGN RULES FOR MAINTAINERS:
+1. NATIVE JSONata ONLY: State transitions, variables, and history mutations
+   must leverage native JSONata syntax. Do not fallback to traditional ASL paths.
+   Raw ASL (sfn.CustomState) bypasses CDK's type checks, so enum-like values
+   are case-sensitive and only validated by the service at deploy time:
+   QueryLanguage must be exactly "JSONata" or "JSONPath" (learned live, ADR-0012).
+2. SELF-HEALING TOOL EVALUATION: The 'Act' step must cleanly format either a
+   successful result OR a structured tool error into a valid ToolResult schema
+   before looping back to 'Reason' — a tool error is shown to the model as
+   text, not allowed to silently disappear or fail the state machine execution.
+3. IAM CONSTRUCTION: `iam.py` supplies bare resource-ARN strings for grants that
+   are simple ARN-scoped permissions (e.g. the Reason state's `iam_action`
+   shortcut). A grant with no real resource ARN, or requiring a Condition, is
+   added manually via `role.add_to_policy(...)` after `self.state_machine`
+   exists (Marketplace, ApplyGuardrail, PutTokenMetrics below) — NOT via
+   `CallAwsService`'s `iam_resources`/`additional_iam_statements` kwargs.
+   CONFIRMED LIVE (make ci): `CallAwsService`'s `iam_resources` kwarg is
+   mandatory and ALWAYS auto-generates its own bare, unconditional statement
+   from whatever is passed to it — there is no way to suppress this, even
+   when `additional_iam_statements` supplies a better, condition-scoped one
+   alongside it. For RecordTokenMetrics (no resource ARN, Condition-scoped),
+   this means `sfn.CustomState` (raw ASL, zero auto-generated IAM) is used
+   instead of `CallAwsService`, so the manual grant below is the ONLY
+   statement produced for that action.
+"""
 from aws_cdk import Duration
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import aws_stepfunctions_tasks as tasks
 from constructs import Construct
-
-# from app_constructs.react_loop.iam import inference_profile_arn
 
 MAX_ITERATIONS = 5
 
@@ -33,12 +70,17 @@ _CALCULATOR_TOOL_SPEC = {
     }
 }
 
+# ADR-0012: namespace for custom token-usage metrics. Kept as a module
+# constant so the Condition below and the PutMetricData call can't drift
+# apart from each other.
+_TOKEN_METRICS_NAMESPACE = "AgenticScaffold/ReactLoop"
+
 
 class ReactLoop(Construct):
     """
     Step Functions ReAct loop, built in JSONata (not JSONPath) query language.
 
-    Flow: Initialize -> Reason (Bedrock Converse) -> Choice
+    Flow: Initialize -> Reason (Bedrock Converse) -> RecordTokenMetrics -> Choice
           -> [Act (calculator) -> back to Reason] or [Finalize]
 
     Loop stops on whichever comes first: the model stops requesting the tool
@@ -83,7 +125,6 @@ class ReactLoop(Construct):
                 "ModelId": model_id_for_invocation,
                 "Messages": "{% $states.input.messages %}",
                 "ToolConfig": {"Tools": [_CALCULATOR_TOOL_SPEC]},
-                # --- NEW: ADR-0009 Guardrail Config ---
                 # ADR-0009: Basic-tier guardrail, single region, no
                 # crossRegionConfig. GuardrailIdentifier accepts either
                 # a bare ID or a full ARN — we pass the full ARN so the
@@ -94,7 +135,6 @@ class ReactLoop(Construct):
                     "GuardrailVersion": guardrail_version,
                     "Trace": "enabled",
                 },
-
             },
             iam_resources=iam_resources_for_invocation,
             outputs={
@@ -106,9 +146,51 @@ class ReactLoop(Construct):
                     "{% $exists($states.result.Output.Message.Content[ToolUse][0].ToolUse) "
                     "? $states.result.Output.Message.Content[ToolUse][0].ToolUse : null %}"
                 ),
+                # ADR-0012: preserve token usage for RecordTokenMetrics.
+                # UNVERIFIED field casing — per ADR-0010's lesson
+                # (GuardrailConfig.Trace lowercase surprise), confirm
+                # $states.result.Usage.InputTokens/OutputTokens actually
+                # resolves at runtime before trusting this line.
+                "usage": "{% $states.result.Usage %}",
             },
         )
-        #
+
+        # ADR-0012: token-usage observability, inserted between Reason and
+        # Choice. sfn.CustomState issues raw ASL with NO auto-generated IAM
+        # at all (unlike CallAwsService — see Rule 3 above), so the manual
+        # grant added on self.state_machine.role below is the ONLY IAM
+        # statement produced for this action.
+        # FIXED LIVE (first deploy): QueryLanguage was "JSONATA" and the
+        # service rejected it (SCHEMA_VALIDATION_FAILED) — the accepted values
+        # are exactly "JSONPath" or "JSONata", case-sensitive. cdk synth and
+        # make ci could not catch this; only the service validates it.
+        # STILL UNVERIFIED: that "Arguments"/"Output" behave correctly at
+        # execution time. The service raised no schema error for them.
+        record_token_metrics = sfn.CustomState(
+            self,
+            "RecordTokenMetrics",
+            state_json={
+                "Type": "Task",
+                "QueryLanguage": "JSONata",
+                "Resource": "arn:aws:states:::aws-sdk:cloudwatch:putMetricData",
+                "Arguments": {
+                    "Namespace": _TOKEN_METRICS_NAMESPACE,
+                    "MetricData": [
+                        {
+                            "MetricName": "ReasonInputTokens",
+                            "Value": "{% $states.input.usage.InputTokens %}",
+                            "Unit": "Count",
+                        },
+                        {
+                            "MetricName": "ReasonOutputTokens",
+                            "Value": "{% $states.input.usage.OutputTokens %}",
+                            "Unit": "Count",
+                        },
+                    ],
+                },
+                "Output": "{% $states.input %}",
+            },
+        )
 
         act = tasks.LambdaInvoke.jsonata(
             self,
@@ -120,12 +202,21 @@ class ReactLoop(Construct):
             outputs={
                 "iteration": "{% $states.input.iteration %}",
                 "max_iterations": "{% $states.input.max_iterations %}",
+                # Self-healing tool evaluation (Rule 2): calculator_tool.py
+                # returns either {"result": ...} or {"error": ...} — never an
+                # unhandled exception. This surfaces whichever key is present
+                # as the ToolResult text, so a tool-side fault is shown to
+                # the model as readable text and the loop continues.
                 "messages": (
                     "{% $append($states.input.messages, [{"
                     "'Role': 'user', "
                     "'Content': [{'ToolResult': {"
                     "'ToolUseId': $states.input.tool_use.ToolUseId, "
-                    "'Content': [{'Text': $string($states.result.Payload.result)}]"
+                    "'Content': [{'Text': $string("
+                    "$exists($states.result.Payload.result) "
+                    "? $states.result.Payload.result "
+                    ": $states.result.Payload.error"
+                    ")}]"
                     "}}]"
                     "}]) %}"
                 ),
@@ -144,7 +235,9 @@ class ReactLoop(Construct):
         choice = sfn.Choice.jsonata(self, "Continue Loop?").when(should_continue, act).otherwise(finalize)
 
         act.next(reason)
-        definition = initialize.next(reason).next(choice)
+        # ADR-0012: Reason now flows through RecordTokenMetrics before
+        # reaching Choice, instead of straight to Choice.
+        definition = initialize.next(reason).next(record_token_metrics).next(choice)
 
         self.state_machine = sfn.StateMachine(
             self,
@@ -171,7 +264,6 @@ class ReactLoop(Construct):
             )
         )
 
-        # --- NEW: Grant permission to apply the Guardrail ---
         # ADR-0009: unlike the Marketplace actions above, ApplyGuardrail
         # DOES support resource-level scoping, scoped to the single
         # guardrail ARN, single region (eu-central-1), no wildcard.
@@ -181,5 +273,23 @@ class ReactLoop(Construct):
                 effect=iam.Effect.ALLOW,
                 actions=["bedrock:ApplyGuardrail"],
                 resources=[guardrail_arn],
+            )
+        )
+
+        # ADR-0012: CloudWatch PutMetricData has no resource-level ARN, same
+        # category as the Marketplace actions above — genuinely scoped only
+        # by Condition, not Resource. sfn.CustomState (above) generates no
+        # IAM of its own, so this is the ONLY statement for this action.
+        self.state_machine.role.add_to_policy(
+            iam.PolicyStatement(
+                sid="AllowPutTokenMetrics",
+                effect=iam.Effect.ALLOW,
+                actions=["cloudwatch:PutMetricData"],
+                resources=["*"],
+                conditions={
+                    "StringEquals": {
+                        "cloudwatch:namespace": _TOKEN_METRICS_NAMESPACE
+                    }
+                },
             )
         )
